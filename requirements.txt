@@ -1,0 +1,7 @@
+torch
+torchtext
+spacy
+matplotlib
+tqdm
+jupyterlab
+seaborn
