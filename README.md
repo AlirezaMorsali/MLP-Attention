@@ -15,12 +15,12 @@ The Transformer architecture has revolutionized natural language processing (NLP
 
 ## 1. Clone Repository
 ```bash
-$ git clone https://github.com/AlirezaMorsali/MLP-Attention.git
-$ cd MLP-Attention/
+git clone https://github.com/AlirezaMorsali/MLP-Attention.git
+cd MLP-Attention/
 ```
 ## 2. Requirements
 ```bash
-$ pip install -r requirements.txt
+pip install -r requirements.txt
 ```
 
 ## 3. Run experiments:
