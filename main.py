@@ -1,3 +1,7 @@
+"""
+This code draws strong inspiration and borrows heavily from the implementation available at https://github.com/karpathy/nanoGPT.
+"""
+
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
