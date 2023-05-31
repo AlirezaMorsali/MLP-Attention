@@ -2,13 +2,13 @@
 This is the PyTorch implementation of our paper __MLP-Attention: Improving Transformer Architecture with MLP Attention Weights__, submitted to ICLR Tiny paper 2023.
 
 <div align=center>
-<img width=80% src="https://github.com/AlirezaMorsali/MLP-Attention/blob/main/Architecture.png"/>
+<img width=50% src="https://github.com/AlirezaMorsali/MLP-Attention/blob/main/Architecture.png"/>
 </div>
 The Transformer architecture has revolutionized natural language processing (NLP) and has achieved state-of-the-art results in various tasks. The attention mechanism is one of the key components of the Transformer architecture, which allows the model to focus on relevant parts of the input. In the standard Transformer, the attention weights are computed by the dot product of query and key vectors followed by a softmax function. However, in this paper, we propose to replace the dot product of query and key vectors with a multi-layer perceptron (MLP) to compute attention weights directly from the embeddings.  The proposed modification is simple and can be easily implemented in existing Transformer-based models to improve their performance as shown in this paper for an NLP task.
 
 ## Results 
 <div align=center>
-<img width=80% src="https://github.com/AlirezaMorsali/MLP-Attention/blob/main/Loss.png"/>
+<img width=50% src="https://github.com/AlirezaMorsali/MLP-Attention/blob/main/Loss.png"/>
 </div>
 
 # Run
