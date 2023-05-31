@@ -1,5 +1,5 @@
 # MLP-Attention
-This is the PyTorch implementation of our paper MLP-Attention: Improving Transformer Architecture with MLP Attention Weights, submitted to ICLR Tiny paper 2023.
+This is the PyTorch implementation of our paper __MLP-Attention: Improving Transformer Architecture with MLP Attention Weights__, submitted to ICLR Tiny paper 2023.
 
 <div align=center>
 <img width=95% src="https://github.com/AlirezaMorsali/MLP-Attention/blob/main/Architecture.png"/>
