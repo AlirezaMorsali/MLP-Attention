@@ -9,6 +9,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import json
+import seaborn as sns
+import math
 
 experiment_name = "Final"
 result_path = f"results/{experiment_name}"
@@ -27,6 +29,7 @@ n_layer = 3
 n_hidden_layers = 1
 dropout = 0.2
 hidden_size = block_size
+head_size = n_embd // n_head
 
 # To download the tinyshakespeare run the following line in terminal
 # wget https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt
@@ -141,9 +144,11 @@ class Head(nn.Module):
         wei = wei.masked_fill(self.tril[:T, :T] == 0, float("-inf"))  # (B, T, T)
         wei = F.softmax(wei, dim=-1)  # (B, T, T)
         wei = self.dropout(wei)
+        self.attentions = wei # save attentions to an instance variable
         # perform the weighted aggregation of the values
         v = self.value(x)  # (B,T,hs)
         out = wei @ v  # (B, T, T) @ (B, T, hs) -> (B, T, hs)
+
         return out
 
 
@@ -264,6 +269,42 @@ class GPTLanguageModel(nn.Module):
         return idx
 
 
+
+def visualize_attention(head_attention, tokens, ax=None):
+    """
+    Visualize the attention from a specific transformer head.
+    
+    Parameters:
+    - head_attention (torch.Tensor): The attention weights from a single transformer head.
+                                     Shape should be (seq_len, seq_len).
+    - tokens (List[str]): The list of tokens corresponding to the sequence. 
+                          Length should be seq_len.
+    - ax (matplotlib.axes.Axes, optional): The matplotlib Axes object to draw on. 
+                                           If None, a new figure and axes are created.
+    """
+    if ax is None:
+        fig, ax = plt.subplots()
+
+    # We'll use a heatmap for the visualization.
+    sns.heatmap(head_attention.cpu().detach().numpy(), cmap="viridis", ax=ax)
+
+    # Set the labels for the x-axis and y-axis.
+    ax.set_xticks(range(len(tokens)))
+    ax.set_yticks(range(len(tokens)))
+
+    ax.set_xticklabels(tokens, rotation=90)
+    ax.set_yticklabels(tokens)
+
+    ax.set_xlabel('Keys')
+    ax.set_ylabel('Queries')
+
+    # Show the plot.
+    plt.savefig('attention.png')
+    plt.show()
+
+
+
+
 mlp_attention_model = GPTLanguageModel(mlp_attention=True)
 model = GPTLanguageModel()
 m = model.to(device)
@@ -293,15 +334,31 @@ for iter in range(max_iters):
         losses = estimate_loss(model=model)
         train_loss.append(losses["train"])
         val_loss.append(losses["val"])
+
         print(
             f"Original model: step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}"
         )
+        print('train: {:.3f}bpc'.format(losses["train"] / math.log(2)))
+        print('test: {:.3f}bpc'.format(losses["val"] / math.log(2)))
+
         losses = estimate_loss(model=mlp_attention_model)
         mlp_attention_train_loss.append(losses["train"])
         mlp_attention_val_loss.append(losses["val"])
+        print('--------------------------------------------')
         print(
             f"MLP Attention model: step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}"
         )
+        print('train: {:.3f}bpc'.format(losses["train"] / math.log(2)))
+        print('test: {:.3f}bpc'.format(losses["val"] / math.log(2)))
+
+        print('--------------------------------------------')
+
+        t = 'this'
+        model.forward(torch.tensor([encode(t)]).to(device))
+        attentions = model.blocks[0].sa.heads[0].attentions
+        tokens = set(list(t))
+        visualize_attention(attentions[0], tokens)
+
 
     # sample a batch of data
     xb, yb = get_batch("train")
