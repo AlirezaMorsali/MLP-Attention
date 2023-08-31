@@ -1,3 +1,4 @@
+%%writefile attention.py
 
 
 import torch
@@ -151,7 +152,7 @@ class MLPAttention(nn.Module):
 
         attn_out = self.combine_heads(attn_out)
  
-        # output [batch_size, nb_heads, seq_len, dim_head]
+        # output [batch_size, seq_len, dim]
         return attn_out
     
 
