@@ -1,4 +1,3 @@
-%%writefile attention.py
 
 
 import torch
