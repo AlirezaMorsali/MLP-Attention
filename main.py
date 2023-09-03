@@ -1,363 +1,382 @@
-"""
-This code draws strong inspiration and borrows heavily from the implementation available at https://github.com/karpathy/nanoGPT.
-"""
-
-import torch
-import torch.nn as nn
-from torch.nn import functional as F
-import numpy as np
-import matplotlib.pyplot as plt
 import os
+import sys
+import argparse
+import random
+import math
 import json
+import time
+import itertools
+import wandb
+from tqdm import tqdm
+import numpy as np
+import torch
+from torch import nn
+from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
+import datetime
 
-experiment_name = "Final"
-result_path = f"results/{experiment_name}"
-if not os.path.exists(result_path):
-    os.makedirs(result_path)
-batch_size = 64  # how many independent sequences will we process in parallel?
-block_size = 256  # what is the maximum context length for predictions?
-max_iters = 1000
-eval_interval = 50
-learning_rate = 0.0003
-device = "cuda" if torch.cuda.is_available() else "cpu"
-eval_iters = 200
-n_embd = 384
-n_head = 3
-n_layer = 3
-n_hidden_layers = 1
-dropout = 0.2
-hidden_size = block_size
-
-# To download the tinyshakespeare run the following line in terminal
-# wget https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt
-with open("input.txt", "r", encoding="utf-8") as f:
-    text = f.read()
-
-# here are all the unique characters that occur in this text
-chars = sorted(list(set(text)))
-vocab_size = len(chars)
-# create a mapping from characters to integers
-stoi = {ch: i for i, ch in enumerate(chars)}
-itos = {i: ch for i, ch in enumerate(chars)}
+from utils import redirect_stdout
+from config import Config
+from models.model_LRA import ModelForSC, ModelForSCDual
+from models.dataset_LRA import LRADataset
 
 
-def encode(s):
-    return [stoi[c] for c in s]  # encoder: take a string, output a list of integers
 
 
-def decode(l):
-    return "".join(
-        [itos[i] for i in l]
-    )  # decoder: take a list of integers, output a string
 
 
-# Train and test splits
-data = torch.tensor(encode(text), dtype=torch.long)
-n = int(0.9 * len(data))  # first 90% will be train, rest val
-train_data = data[:n]
-val_data = data[n:]
-
-# data loading
+def print_summary(summary, save_if_improved, model, checkpoint_path):
+    summary["loss"] = np.mean(summary["loss"])
+    summary["accu"] = np.mean(summary["accu"])
 
 
-def get_batch(split):
-    # generate a small batch of data of inputs x and targets y
-    data = train_data if split == "train" else val_data
-    ix = torch.randint(len(data) - block_size, (batch_size,))
-    x = torch.stack([data[i : i + block_size] for i in ix])
-    y = torch.stack([data[i + 1 : i + block_size + 1] for i in ix])
-    x, y = x.to(device), y.to(device)
-    return x, y
+    if summary["accu"] > summary["best_accu"]:
+        summary["best_accu"] = summary["accu"]
+
+    summary_round = {}
+    for key in summary:
+        if type(summary[key]) is str:
+            summary_round[key] = summary[key]
+        else:
+            summary_round[key] = round(summary[key], 4)
+
+    print(summary_round, flush = True)
+
+    summary["t"] = 0
+    summary["loss"] = []
+    summary["accu"] = []
+
+def step_LRA(model, optimizer, lr_scheduler, ds_iter,amp_scaler,
+             accumu_steps, init_t, summary, component, step_idx, writer=None):
+    t0 = time.time()
+
+    optimizer.zero_grad()
+
+    _, batch = next(ds_iter[component])
+    for key in batch:
+        batch[key] = batch[key].cuda()
+
+    if component == "train":
+        outputs = {}
+
+        partial_inputs_list = [{} for _ in range(accumu_steps)]
+        for key in batch:
+            for idx, inp in enumerate(torch.chunk(batch[key], accumu_steps, dim = 0)):
+                partial_inputs_list[idx][key] = inp
+
+        for partial_inputs in partial_inputs_list:
+            # with torch.cuda.amp.autocast():
+            partial_outputs = model(**partial_inputs)
+
+            for key in partial_outputs:
+                partial_outputs[key] = partial_outputs[key].mean() / accumu_steps
+                if key not in outputs:
+                    outputs[key] = partial_outputs[key]
+                else:
+                    outputs[key] += partial_outputs[key]
 
 
-@torch.no_grad()
-def estimate_loss(model):
-    out = {}
-    model.eval()
-    for split in ["train", "val"]:
-        losses = torch.zeros(eval_iters)
-        for k in range(eval_iters):
-            X, Y = get_batch(split)
-            logits, loss = model(X, Y)
-            losses[k] = loss.item()
-        out[split] = losses.mean()
+            amp_scaler.scale(partial_outputs["loss"]).backward() # loss.backward()
+
+        # https://pytorch.org/tutorials/recipes/recipes/amp_recipe.html
+        amp_scaler.unscale_(optimizer)
+
+
+
+        nn.utils.clip_grad_value_(model.parameters(), clip_value=1) # Gradient Clipping
+
+
+        amp_scaler.step(optimizer)
+        amp_scaler.update()
+        lr_scheduler.step()
+    else:
+        with torch.no_grad():
+            outputs = {}
+
+            partial_inputs_list = [{} for _ in range(accumu_steps)]
+            for key in batch:
+                for idx, inp in enumerate(torch.chunk(batch[key], accumu_steps, dim = 0)):
+                    partial_inputs_list[idx][key] = inp
+
+            for partial_inputs in partial_inputs_list:
+                partial_outputs = model(**partial_inputs)
+                for key in partial_outputs:
+                    partial_outputs[key] = partial_outputs[key].mean() / accumu_steps
+                    if key not in outputs:
+                        outputs[key] = partial_outputs[key]
+                    else:
+                        outputs[key] += partial_outputs[key]
+
+    t1 = time.time()
+
+    batch_size = batch[list(batch.keys())[0]].size(0)
+    t_escape = t1 - t0
+    learning_rate = optimizer.param_groups[0]["lr"]
+    loss = outputs["loss"].data.item()
+    accu = outputs["accu"].data.item()
+    time_since_start = time.time() - init_t
+
+    if step_idx%100==0:
+        print(f"step={step_idx}, tt={time_since_start:.1f}, t={t_escape:.3f}, bs={batch_size}, lr={learning_rate:.6f}, loss={loss:.4f}, accu={accu:.4f}\t\t\t\t", end = "\r", flush = True)
+
+    summary[component]["t"] += t_escape
+    summary[component]["loss"].append(loss)
+    summary[component]["accu"].append(accu)
+
+    if component == 'train':
+
+        metrics = {"train/train_loss": loss,
+                   "train/learning_rate" : learning_rate,
+                   "train/accuracy" : accu, 
+                "train/step": step_idx}
+        wandb.log(metrics)
+
+    if writer is not None:
+        writer.add_scalar('loss', loss, step_idx)
+        writer.add_scalar('accu', accu, step_idx)
+
+    return outputs
+
+def train_LRA(model, optimizer, lr_scheduler, ds_iter, amp_scaler,
+              training_config, summary, writer):
+
+    accumu_steps = training_config['accumu_steps']
+    checkpoint_path = training_config['checkpoint_path']
+    # best_dev_loss = float(1e10)
+    best_dev_accu = 0
+    total_step = training_config["num_train_steps"]
+
+    init_t = time.time()
+
     model.train()
-    return out
+    for train_step_idx in range(total_step):
+        outputs = step_LRA(model, optimizer, lr_scheduler, ds_iter,amp_scaler,
+                           accumu_steps, init_t, summary, component='train', step_idx=train_step_idx,writer=writer)
+
+        if (train_step_idx + 1) % training_config["eval_frequency"] == 0:
+            print_summary(summary["train"], False, model, checkpoint_path)
+            model.eval()
+            for dev_step_idx in range(training_config["num_eval_steps"]):
+                outputs = step_LRA(model, optimizer, lr_scheduler, ds_iter,amp_scaler,
+                                   accumu_steps, init_t, summary, component='dev', step_idx=dev_step_idx)
+            # dev_loss = np.mean(summary["dev"]["loss"])
+            # if  dev_loss < best_dev_loss:
+            #     best_dev_loss = dev_loss
+            dev_accu = np.mean(summary["dev"]["accu"])
+
+            val_metrics = {"val/val_loss": np.mean(summary["dev"]["loss"]), 
+                "val/val_accuracy": np.mean(summary["dev"]["accu"])}
+            
+            wandb.log(val_metrics)
+
+            if dev_accu > best_dev_accu:
+                best_dev_accu = dev_accu
+                if (train_step_idx + 1) > total_step * 0.2:
+                    torch.save({"model_state_dict":model.state_dict()}, checkpoint_path)
+                    print('best model saved: step = ',train_step_idx, 'dev accu = ',dev_accu)
+
+            print_summary(summary["dev"], True, model, checkpoint_path)
+            model.train()
 
 
-class MLPHead(nn.Module):
-    """one moded head of self-attention"""
-
-    def __init__(self, head_size):
-        super().__init__()
-        self.nnet = nn.Sequential(
-            nn.Linear(n_embd, hidden_size),
-            # nn.ReLU(),
-            # nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, block_size, bias=False),
-        )
-        self.value = nn.Linear(n_embd, head_size, bias=False)
-        self.register_buffer("tril", torch.tril(torch.ones(block_size, block_size)))
-
-        self.dropout = nn.Dropout(dropout)
-
-    def forward(self, x):
-        # input of size (batch, time-step, channels)
-        # output of size (batch, time-step, head size)
-        B, T, C = x.shape
-        wei = self.nnet(x)
-        wei = wei.masked_fill(self.tril[:T, :T] == 0, float("-inf"))  # (B, T, T)
-        wei = F.softmax(wei, dim=-1)  # (B, T, T)
-        wei = self.dropout(wei)
-        # perform the weighted aggregation of the values
-        v = self.value(x)  # (B,T,hs)
-        out = wei @ v  # (B, T, T) @ (B, T, hs) -> (B, T, hs)
-        return out
 
 
-class Head(nn.Module):
-    """one head of self-attention"""
 
-    def __init__(self, head_size):
-        super().__init__()
-        self.key = nn.Linear(n_embd, head_size, bias=False)
-        self.query = nn.Linear(n_embd, head_size, bias=False)
-        self.value = nn.Linear(n_embd, head_size, bias=False)
-        self.register_buffer("tril", torch.tril(torch.ones(block_size, block_size)))
+    print('total training step (k): {}'.format(total_step/1000.0))
+    print("total training time (s): {}".format(int(time.time()-init_t)))
+    print("peak memory usage (MB): {}".format(torch.cuda.memory_stats()['active_bytes.all.peak']>>20))
 
-        self.dropout = nn.Dropout(dropout)
-
-    def forward(self, x):
-        # input of size (batch, time-step, channels)
-        # output of size (batch, time-step, head size)
-        B, T, C = x.shape
-        k = self.key(x)  # (B,T,hs)
-        q = self.query(x)  # (B,T,hs)
-        # compute attention scores ("affinities")
-        wei = (
-            q @ k.transpose(-2, -1) * k.shape[-1] ** -0.5
-        )  # (B, T, hs) @ (B, hs, T) -> (B, T, T)
-        wei = wei.masked_fill(self.tril[:T, :T] == 0, float("-inf"))  # (B, T, T)
-        wei = F.softmax(wei, dim=-1)  # (B, T, T)
-        wei = self.dropout(wei)
-        # perform the weighted aggregation of the values
-        v = self.value(x)  # (B,T,hs)
-        out = wei @ v  # (B, T, T) @ (B, T, hs) -> (B, T, hs)
-        return out
+    wandb.summary["training_steps"] = total_step
+    wandb.summary["training_time"] = int(time.time()-init_t)
+    wandb.summary["memory_usage"] = torch.cuda.memory_stats()['active_bytes.all.peak']>>20
 
 
-class MultiHeadAttention(nn.Module):
-    """multiple heads of self-attention in parallel"""
+def eval_LRA(model, optimizer, lr_scheduler, ds_iter, amp_scaler,
+             training_config, summary):
+    accumu_steps = training_config['accumu_steps']
+    checkpoint_path = training_config['checkpoint_path']
+    init_t = time.time()
+    model.eval()
+    try:
+        for test_step_idx in itertools.count():
+            outputs = step_LRA(model, optimizer, lr_scheduler, ds_iter,amp_scaler,
+                               accumu_steps, init_t, summary, component='test', step_idx=test_step_idx)
+    except StopIteration:
+        print_summary(summary["test"], False, model, checkpoint_path)
 
-    def __init__(self, num_heads, head_size, mlp_attention=False):
-        super().__init__()
-        if mlp_attention:
-            self.heads = nn.ModuleList([MLPHead(head_size) for _ in range(num_heads)])
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", type = str, default="train",
+                        help="train eval")
+    parser.add_argument("--checkpoint", type = str, default="test",
+                        help="load ./checkpoints/model_name.model to evaluation")
+    parser.add_argument("--attn", type = str, default="softmaxQKV",
+                        help = "softmax, nystrom, linformer, informer, performer, bigbird, sketched, skeinb,skein, skein0, skeini")
+    parser.add_argument("--task", type = str, default="lra-listops",
+                        help = "lra-listops, lra-retrieval, lra-text, lra-pathfinder32-curv_contour_length_14")
+    parser.add_argument('--random', type=int, default=42)
+    parser.add_argument('--full_training', type=bool, default=True)
+    parser.add_argument('--sweep_id', type=str)
+    args = parser.parse_args()
+    return args
+
+
+def run_sweep(config=None):
+
+    # Initialize a new wandb run
+    with wandb.init(config=config):
+        # If called by wandb.agent, as below,
+        # this config will be set by Sweep Controller
+        
+        args = get_args()
+
+        sweep_config = wandb.config
+        print('1111111111111111')
+        wandb.summary["full_training"] =  args.full_training
+
+        print("22222222222222")
+
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+
+        print('33333333333333333')
+        if args.task == 'lra-pathfinder':
+            args.task = 'lra-pathfinder32-curv_contour_length_14'
+
+        
+        
+        ### get model config ###
+        model_config = Config[args.task]["model"]
+        if args.attn in Config[args.task]["extra_attn_config"]:
+            model_config.update(Config[args.task]["extra_attn_config"][args.attn])
+        model_config["mixed_precision"] = True
+        model_config["attn_type"] = args.attn
+        model_config["max_seq_len"] = int(2 ** math.ceil(math.log2(model_config["max_seq_len"])))
+        model_config["random_seed"] = args.random
+
+        model_config["hidden_size"] = sweep_config.hidden_size
+
+        training_config = Config[args.task]["training"]
+        print("4444444444444444444")
+        if not args.full_training:
+            training_config['num_train_steps'] = 2000   
+            training_config["eval_frequency"] = 100
+        print("555555555555555")
+        ### log preparation ###
+        # log_dir = './log-{}/'.format(args.random)
+        log_dir = './log-{}/'.format(timestamp)
+        if not os.path.exists(log_dir):
+            os.mkdir(log_dir)
+        log_dir = os.path.join(log_dir, args.task)
+        if not os.path.exists(log_dir):
+            os.mkdir(log_dir)
+        print("6666666666666666666666666")
+        log_path = os.path.join(log_dir,'{}.{}.log'.format(args.mode, args.checkpoint))
+        redirect_stdout(open(log_path, 'w'))
+        summary = {
+            component:{"t":0, "loss":[], "accu":[], "best_accu":0, "component":component}
+            for component in ["train", "dev", "test"]
+        }
+        writer = SummaryWriter(os.path.join(log_dir,'{}.tensorboard'.format(args.checkpoint)))
+
+        print(json.dumps([model_config, training_config], indent = 4))
+
+        print("77777777777777777777")
+        ###  set the random seeds for deterministic results. ####
+        SEED = args.random
+        random.seed(SEED)
+        torch.manual_seed(SEED)
+        torch.backends.cudnn.deterministic = True
+
+        print("88888888888888888888888")
+
+        ### model preparation ###
+        if args.task == "lra-retrieval":
+            model = ModelForSCDual(model_config)
         else:
-            self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
-        self.proj = nn.Linear(head_size * num_heads, n_embd)
-        self.dropout = nn.Dropout(dropout)
+            model = ModelForSC(model_config)
 
-    def forward(self, x):
-        out = torch.cat([h(x) for h in self.heads], dim=-1)
-        out = self.dropout(self.proj(out))
-        return out
+        print("999999999999999999")
+        # checkpoint_dir = './checkpoints-{}'.format(args.random)
+        checkpoint_dir = './checkpoints-{}'.format(timestamp)
+        if not os.path.exists(checkpoint_dir):
+            os.mkdir(checkpoint_dir)
+        checkpoint_path = os.path.join(checkpoint_dir, '{}.{}.model'.format(args.checkpoint, args.random))
+        training_config["checkpoint_path"] = checkpoint_path
+        if os.path.exists(checkpoint_path):
+            checkpoint = torch.load(checkpoint_path)
+            model.load_state_dict(checkpoint["model_state_dict"])
+            print("model loaded from: " + checkpoint_path)
+
+        print("10000000000000000000000")
+        model = model.cuda()
+        print(model)
+        num_parameters = np.sum([np.prod(weight.size()) for weight in model.parameters()])
+        print(f"parameter_size: {[weight.size() for weight in model.parameters()]}", flush = True)
+        print(f"num_parameter: {num_parameters}", flush = True)
+ 
+        wandb.summary["num_parameter"] = num_parameters
+        print('111111111111111111111111')
+        device_ids = list(range(torch.cuda.device_count()))
+        # print(f"GPU list: {device_ids}")
+        # model = nn.DataParallel(model, device_ids = device_ids)
 
 
-class FeedFoward(nn.Module):
-    """a simple linear layer followed by a non-linearity"""
 
-    def __init__(self, n_embd):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(n_embd, 4 * n_embd),
-            nn.ReLU(),
-            nn.Linear(4 * n_embd, n_embd),
-            nn.Dropout(dropout),
+        ### data preparation ###
+
+        ds_iter = {
+            "train":enumerate(DataLoader(LRADataset(f"./data/{args.task}.train.pickle", True), batch_size = training_config["batch_size"], drop_last = True)),
+            "dev":enumerate(DataLoader(LRADataset(f"./data/{args.task}.dev.pickle", True), batch_size = training_config["batch_size"], drop_last = True)),
+            "test":enumerate(DataLoader(LRADataset(f"./data/{args.task}.test.pickle", False), batch_size = training_config["batch_size"], drop_last = True)),
+        }
+
+        ### training preparation ###
+
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr = training_config["learning_rate"],
+            betas = (0.9, 0.999), eps = 1e-6, weight_decay = training_config["weight_decay"]
         )
 
-    def forward(self, x):
-        return self.net(x)
-
-
-class Block(nn.Module):
-    """Transformer block: communication followed by computation"""
-
-    def __init__(self, n_embd, n_head, mlp_attention=False):
-        # n_embd: embedding dimension, n_head: the number of heads we'd like
-        super().__init__()
-        head_size = n_embd // n_head
-        self.sa = MultiHeadAttention(n_head, head_size, mlp_attention=mlp_attention)
-        self.ffwd = FeedFoward(n_embd)
-        self.ln1 = nn.LayerNorm(n_embd)
-        self.ln2 = nn.LayerNorm(n_embd)
-
-    def forward(self, x):
-        x = x + self.sa(self.ln1(x))
-        x = x + self.ffwd(self.ln2(x))
-        return x
-
-
-class GPTLanguageModel(nn.Module):
-    def __init__(self, mlp_attention=False):
-        super().__init__()
-        # each token directly reads off the logits for the next token from a lookup table
-        self.token_embedding_table = nn.Embedding(vocab_size, n_embd)
-        self.position_embedding_table = nn.Embedding(block_size, n_embd)
-        self.blocks = nn.Sequential(
-            *[
-                Block(n_embd, n_head=n_head, mlp_attention=mlp_attention)
-                for _ in range(n_layer)
-            ]
-        )
-        self.ln_f = nn.LayerNorm(n_embd)  # final layer norm
-        self.lm_head = nn.Linear(n_embd, vocab_size)
-
-        # better init, not covered in the original GPT video, but important, will cover in followup video
-        self.apply(self._init_weights)
-
-    def _init_weights(self, module):
-        if isinstance(module, nn.Linear):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            if module.bias is not None:
-                torch.nn.init.zeros_(module.bias)
-        elif isinstance(module, nn.Embedding):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-
-    def forward(self, idx, targets=None):
-        B, T = idx.shape
-
-        # idx and targets are both (B,T) tensor of integers
-        tok_emb = self.token_embedding_table(idx)  # (B,T,C)
-        pos_emb = self.position_embedding_table(torch.arange(T, device=device))  # (T,C)
-        x = tok_emb + pos_emb  # (B,T,C)
-        x = self.blocks(x)  # (B,T,C)
-        x = self.ln_f(x)  # (B,T,C)
-        logits = self.lm_head(x)  # (B,T,vocab_size)
-
-        if targets is None:
-            loss = None
-        else:
-            B, T, C = logits.shape
-            logits = logits.view(B * T, C)
-            targets = targets.view(B * T)
-            loss = F.cross_entropy(logits, targets)
-
-        return logits, loss
-
-    def generate(self, idx, max_new_tokens):
-        # idx is (B, T) array of indices in the current context
-        for _ in range(max_new_tokens):
-            # crop idx to the last block_size tokens
-            idx_cond = idx[:, -block_size:]
-            # get the predictions
-            logits, loss = self(idx_cond)
-            # focus only on the last time step
-            logits = logits[:, -1, :]  # becomes (B, C)
-            # apply softmax to get probabilities
-            probs = F.softmax(logits, dim=-1)  # (B, C)
-            # sample from the distribution
-            idx_next = torch.multinomial(probs, num_samples=1)  # (B, 1)
-            # append sampled index to the running sequence
-            idx = torch.cat((idx, idx_next), dim=1)  # (B, T+1)
-        return idx
-
-
-mlp_attention_model = GPTLanguageModel(mlp_attention=True)
-model = GPTLanguageModel()
-m = model.to(device)
-mlp_attention_m = mlp_attention_model.to(device)
-original_params = sum(p.numel() for p in m.parameters()) / 1e6
-mlp_attention_params = sum(p.numel() for p in mlp_attention_m.parameters()) / 1e6
-# print the number of parameters in the model
-print(f"Original Model: {original_params} M parameters")
-print(f"MLP Attention Model: {mlp_attention_params} M parameters")
-
-# create a PyTorch optimizer
-optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
-train_loss = []
-val_loss = []
-
-mlp_attention_optimizer = torch.optim.AdamW(
-    mlp_attention_model.parameters(), lr=learning_rate
-)
-mlp_attention_train_loss = []
-mlp_attention_val_loss = []
-x_val = []
-
-for iter in range(max_iters):
-    # every once in a while evaluate the loss on train and val sets
-    if iter % eval_interval == 0 or iter == max_iters - 1:
-        x_val.append(iter)
-        losses = estimate_loss(model=model)
-        train_loss.append(losses["train"])
-        val_loss.append(losses["val"])
-        print(
-            f"Original model: step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}"
-        )
-        losses = estimate_loss(model=mlp_attention_model)
-        mlp_attention_train_loss.append(losses["train"])
-        mlp_attention_val_loss.append(losses["val"])
-        print(
-            f"MLP Attention model: step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}"
+        lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer = optimizer,
+            max_lr = training_config["learning_rate"],
+            pct_start = training_config["warmup"] / training_config["num_train_steps"],
+            anneal_strategy = training_config["lr_decay"],
+            total_steps = training_config["num_train_steps"]
         )
 
-    # sample a batch of data
-    xb, yb = get_batch("train")
-
-    # evaluate the loss
-    logits, loss = model(xb, yb)
-    optimizer.zero_grad(set_to_none=True)
-    loss.backward()
-    optimizer.step()
-
-    mlp_attention_logits, mlp_attention_loss = mlp_attention_model(xb, yb)
-    mlp_attention_optimizer.zero_grad(set_to_none=True)
-    mlp_attention_loss.backward()
-    mlp_attention_optimizer.step()
+        amp_scaler = torch.cuda.amp.GradScaler() if model_config["mixed_precision"] else None
 
 
-hyper_params = {
-    "batch_size": batch_size,  # how many independent sequences will we process in parallel?
-    "block_size": block_size,  # what is the maximum context length for predictions?
-    "max_iters": max_iters,
-    "eval_interval": eval_interval,
-    "learning_rate": learning_rate,
-    "eval_iters": eval_iters,
-    "n_embd": n_embd,
-    "n_head": n_head,
-    "n_layer": n_layer,
-    "dropout": dropout,
-    "n_hidden_layers": n_hidden_layers,
-    "hidden_size": block_size,
-    "original_params_million": original_params,
-    "mlp_attention_params_million": mlp_attention_params,
-    "train_loss": [val.tolist() for val in train_loss],
-    "val_loss": [val.tolist() for val in val_loss],
-    "mlp_attention_train_loss": [val.tolist() for val in mlp_attention_train_loss],
-    "mlp_attention_val_loss": [val.tolist() for val in mlp_attention_val_loss],
-    "epochs": x_val,
-}
-with open(f"{result_path}/hyper_params.json", "w") as outfile:
-    json.dump(hyper_params, outfile, indent=4)
+        # accumu_steps = max(training_config["batch_size"] // len(device_ids) // model_config["gpu_memory"], 1)
+        accumu_steps = model_config["bz_rate"] if "bz_rate" in model_config else 1
+        # accumu_steps = 1
+        print(f"accumu_steps={accumu_steps}")
+        training_config['accumu_steps'] = accumu_steps
 
 
-with open(f"{result_path}/losses.npy", "wb") as f:
-    np.save(f, np.array(train_loss))
-    np.save(f, np.array(val_loss))
-    np.save(f, np.array(mlp_attention_train_loss))
-    np.save(f, np.array(mlp_attention_val_loss))
+
+        ### train ###
+        if args.mode == 'train':
+            print("222222222222222222222222")
+            train_LRA(model, optimizer, lr_scheduler, ds_iter, amp_scaler,
+                    training_config, summary, writer)
+
+        ### eval ###
+        if os.path.exists(checkpoint_path) and checkpoint_path != './checkpoints/test.model':
+            checkpoint = torch.load(checkpoint_path)
+            model.load_state_dict(checkpoint["model_state_dict"])
+            print("loading the best model from: " + checkpoint_path)
+        eval_LRA(model, optimizer, lr_scheduler, ds_iter, amp_scaler,
+                training_config, summary)
 
 
-plt.plot(x_val[1:], train_loss[1:], label="Training Loss")
-plt.plot(x_val[1:], val_loss[1:], label="Validation Loss")
-plt.plot(x_val[1:], mlp_attention_train_loss[1:], label="Modded Training Loss")
-plt.plot(x_val[1:], mlp_attention_val_loss[1:], label="Modded Validation Loss")
-plt.title("Training and Validation Loss")
 
-plt.xlabel("Epochs")
-plt.ylabel("Loss")
-plt.legend(loc="best")
-plt.savefig(f"{result_path}/losses.png")
-plt.show()
+def main():
+    args = get_args()
+    print('----------------------id', args.sweep_id)
+    wandb.agent(args.sweep_id, run_sweep)
+
+if __name__ == '__main__':
+    main()
