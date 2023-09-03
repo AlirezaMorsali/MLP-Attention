@@ -1,3 +1,4 @@
+%%writefile attention.py
 
 
 import torch
@@ -111,8 +112,8 @@ class MLPAttention(nn.Module):
         self.num_head = config["num_head"]
         self.attn_type = config["attn_type"]
         self.seq_len = config["max_seq_len"]
-        self.hidden_size = self.seq_len
-        # self.hidden_size = config["hidden_size"]
+        # self.hidden_size = self.seq_len
+        self.hidden_size = config["hidden_size"]
 
         self.W_x = nn.Linear(self.dim, self.num_head * self.head_dim)
         self.W_v = nn.Linear(self.dim, self.num_head * self.head_dim)
