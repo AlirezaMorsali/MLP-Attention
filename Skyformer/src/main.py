@@ -379,7 +379,7 @@ def run_sweep(config=None):
 
 def main():
     args = get_args()
-    wandb.agent(args.sweep_id, run_sweep)
+    wandb.agent(args.sweep_id, run_sweep, count=5)
 
 if __name__ == '__main__':
     main()
