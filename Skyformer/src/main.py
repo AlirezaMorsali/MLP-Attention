@@ -167,7 +167,7 @@ def train_LRA(model, optimizer, lr_scheduler, ds_iter, amp_scaler,
             val_metrics = {"val/val_loss": np.mean(summary["dev"]["loss"]), 
                 "val/val_accuracy": np.mean(summary["dev"]["accu"])}
             
-            wandb.log = {val_metrics}
+            wandb.log(val_metrics)
 
             if dev_accu > best_dev_accu:
                 best_dev_accu = dev_accu
@@ -227,15 +227,18 @@ def run_sweep(config=None):
     with wandb.init(config=config):
         # If called by wandb.agent, as below,
         # this config will be set by Sweep Controller
-
+        
         args = get_args()
 
         sweep_config = wandb.config
-
+        print('1111111111111111')
         wandb.summary["full_training"] =  args.full_training
+
+        print("22222222222222")
 
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
+        print('33333333333333333')
         if args.task == 'lra-pathfinder':
             args.task = 'lra-pathfinder32-curv_contour_length_14'
 
@@ -253,20 +256,20 @@ def run_sweep(config=None):
         model_config["hidden_size"] = sweep_config.hidden_size
 
         training_config = Config[args.task]["training"]
-
+        print("4444444444444444444")
         if not args.full_training:
             training_config['num_train_steps'] = 2000   
             training_config["eval_frequency"] = 100
-
+        print("555555555555555")
         ### log preparation ###
         # log_dir = './log-{}/'.format(args.random)
-        log_dir = './log-{}/{}'.format(args.random, timestamp)
+        log_dir = './log-{}/'.format(timestamp)
         if not os.path.exists(log_dir):
             os.mkdir(log_dir)
         log_dir = os.path.join(log_dir, args.task)
         if not os.path.exists(log_dir):
             os.mkdir(log_dir)
-
+        print("6666666666666666666666666")
         log_path = os.path.join(log_dir,'{}.{}.log'.format(args.mode, args.checkpoint))
         redirect_stdout(open(log_path, 'w'))
         summary = {
@@ -277,14 +280,14 @@ def run_sweep(config=None):
 
         print(json.dumps([model_config, training_config], indent = 4))
 
-
+        print("77777777777777777777")
         ###  set the random seeds for deterministic results. ####
         SEED = args.random
         random.seed(SEED)
         torch.manual_seed(SEED)
         torch.backends.cudnn.deterministic = True
 
-
+        print("88888888888888888888888")
 
         ### model preparation ###
         if args.task == "lra-retrieval":
@@ -292,9 +295,9 @@ def run_sweep(config=None):
         else:
             model = ModelForSC(model_config)
 
-
+        print("999999999999999999")
         # checkpoint_dir = './checkpoints-{}'.format(args.random)
-        checkpoint_dir = './checkpoints-{}/{}'.format(args.random, timestamp)
+        checkpoint_dir = './checkpoints-{}'.format(timestamp)
         if not os.path.exists(checkpoint_dir):
             os.mkdir(checkpoint_dir)
         checkpoint_path = os.path.join(checkpoint_dir, '{}.{}.model'.format(args.checkpoint, args.random))
@@ -304,7 +307,7 @@ def run_sweep(config=None):
             model.load_state_dict(checkpoint["model_state_dict"])
             print("model loaded from: " + checkpoint_path)
 
-
+        print("10000000000000000000000")
         model = model.cuda()
         print(model)
         num_parameters = np.sum([np.prod(weight.size()) for weight in model.parameters()])
@@ -312,7 +315,7 @@ def run_sweep(config=None):
         print(f"num_parameter: {num_parameters}", flush = True)
  
         wandb.summary["num_parameter"] = num_parameters
-
+        print('111111111111111111111111')
         device_ids = list(range(torch.cuda.device_count()))
         # print(f"GPU list: {device_ids}")
         # model = nn.DataParallel(model, device_ids = device_ids)
@@ -322,9 +325,9 @@ def run_sweep(config=None):
         ### data preparation ###
 
         ds_iter = {
-            "train":enumerate(DataLoader(LRADataset(f"./data/lra_processed/{args.task}.train.pickle", True), batch_size = training_config["batch_size"], drop_last = True)),
-            "dev":enumerate(DataLoader(LRADataset(f"./data/lra_processed/{args.task}.dev.pickle", True), batch_size = training_config["batch_size"], drop_last = True)),
-            "test":enumerate(DataLoader(LRADataset(f"./data/lra_processed/{args.task}.test.pickle", False), batch_size = training_config["batch_size"], drop_last = True)),
+            "train":enumerate(DataLoader(LRADataset(f"./data/{args.task}.train.pickle", True), batch_size = training_config["batch_size"], drop_last = True)),
+            "dev":enumerate(DataLoader(LRADataset(f"./data/{args.task}.dev.pickle", True), batch_size = training_config["batch_size"], drop_last = True)),
+            "test":enumerate(DataLoader(LRADataset(f"./data/{args.task}.test.pickle", False), batch_size = training_config["batch_size"], drop_last = True)),
         }
 
         ### training preparation ###
@@ -356,6 +359,7 @@ def run_sweep(config=None):
 
         ### train ###
         if args.mode == 'train':
+            print("222222222222222222222222")
             train_LRA(model, optimizer, lr_scheduler, ds_iter, amp_scaler,
                     training_config, summary, writer)
 
@@ -371,6 +375,7 @@ def run_sweep(config=None):
 
 def main():
     args = get_args()
+    print('----------------------id', args.sweep_id)
     wandb.agent(args.sweep_id, run_sweep)
 
 if __name__ == '__main__':
