@@ -202,6 +202,10 @@ def eval_LRA(model, optimizer, lr_scheduler, ds_iter, amp_scaler,
             outputs = step_LRA(model, optimizer, lr_scheduler, ds_iter,amp_scaler,
                                accumu_steps, init_t, summary, component='test', step_idx=test_step_idx)
     except StopIteration:
+        
+        wandb.summary["test_loss"] = np.mean(summary["test"]["loss"])
+        wandb.summary["test_accuracy"] = np.mean(summary["test"]["acc"])
+        
         print_summary(summary["test"], False, model, checkpoint_path)
 
 def get_args():
