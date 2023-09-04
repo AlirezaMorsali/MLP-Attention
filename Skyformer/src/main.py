@@ -187,7 +187,7 @@ def train_LRA(model, optimizer, lr_scheduler, ds_iter, amp_scaler,
     print("peak memory usage (MB): {}".format(torch.cuda.memory_stats()['active_bytes.all.peak']>>20))
 
     wandb.summary["training_steps"] = total_step
-    wandb.summary["training_time"] = total_step(int(time.time()-init_t))
+    wandb.summary["training_time"] = int(time.time()-init_t)
     wandb.summary["memory_usage"] = torch.cuda.memory_stats()['active_bytes.all.peak']>>20
 
 
