@@ -29,18 +29,17 @@ listops = {
               "training":{
                   "batch_size":32, 
                   "learning_rate":0.0001,
-                  "warmup":50,
+                  "warmup":1000,
                   "lr_decay":"linear",
                   "weight_decay":0,
-                  "eval_frequency":100, 
-                  "num_train_steps":1000,
-                  "num_init_steps":200,
+                  "eval_frequency":500, 
+                  "num_train_steps":50000,
+                  "num_init_steps":1000,
                   "num_eval_steps":62,
                   "patience":10, 
               },
               "extra_attn_config":{
                   "softmax":{"bz_rate":1,},
-                  "mlp":{"bz_rate":1,},
                   "softmaxRBF32":{"bz_rate":1},
                   "kernelized":{"bz_rate":1},
 
@@ -267,4 +266,3 @@ Config = {
 }
 
 Config["lra-pathfinder32-curv_contour_length_14"] = Config["lra-pathfinder"]
-
