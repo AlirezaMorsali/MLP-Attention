@@ -204,7 +204,7 @@ def eval_LRA(model, optimizer, lr_scheduler, ds_iter, amp_scaler,
     except StopIteration:
         
         wandb.summary["test_loss"] = np.mean(summary["test"]["loss"])
-        wandb.summary["test_accuracy"] = np.mean(summary["test"]["acc"])
+        wandb.summary["test_accuracy"] = np.mean(summary["test"]["accu"])
         
         print_summary(summary["test"], False, model, checkpoint_path)
 
@@ -363,7 +363,6 @@ def run_sweep(config=None):
 
         ### train ###
         if args.mode == 'train':
-            print("222222222222222222222222")
             train_LRA(model, optimizer, lr_scheduler, ds_iter, amp_scaler,
                     training_config, summary, writer)
 
