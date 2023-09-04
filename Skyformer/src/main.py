@@ -1,3 +1,4 @@
+%%writefile main.py
 import os
 import sys
 import argparse
@@ -219,7 +220,7 @@ def get_args():
     parser.add_argument("--task", type = str, default="lra-listops",
                         help = "lra-listops, lra-retrieval, lra-text, lra-pathfinder32-curv_contour_length_14")
     parser.add_argument('--random', type=int, default=42)
-    parser.add_argument('--full_training', type=bool, default=True)
+    parser.add_argument('--full_training', type=bool, default=False)
     parser.add_argument('--sweep_id', type=str)
     args = parser.parse_args()
     return args
@@ -256,14 +257,36 @@ def run_sweep(config=None):
         model_config["attn_type"] = args.attn
         model_config["max_seq_len"] = int(2 ** math.ceil(math.log2(model_config["max_seq_len"])))
         model_config["random_seed"] = args.random
+        
+        if sweep_config.hidden_size == 0 or sweep_config.hidden_size == '0':
+            model_config["attn_type"] = 'softmax'
+            print('attn: softmax')
+        elif sweep_config.hidden_size == 1 or sweep_config.hidden_size == '1':
+            model_config["attn_type"] = 'linformer'
+            print('attn: linformer')
+        elif sweep_config.hidden_size == 2 or sweep_config.hidden_size == '2':
+            model_config["attn_type"] = 'informer'
+            print('attn: informer')
+        elif sweep_config.hidden_size == 3 or sweep_config.hidden_size == '3':
+            model_config["attn_type"] = 'reformer'
+            print('attn: reformer')
+        else:
+            model_config["attn_type"] = 'mlp'
+            print('attn: mlp')
 
         model_config["hidden_size"] = sweep_config.hidden_size
-
+        
+        
         training_config = Config[args.task]["training"]
         
         if not args.full_training:
-            training_config['num_train_steps'] = 2000   
+            print('-----------full training------', ' False')
+            training_config['num_train_steps'] = 5000
+            training_config['num_init_steps'] = 1000
+            training_config['warmup'] = 1000
             training_config["eval_frequency"] = 100
+        else:
+            print('-----------full training------', ' True')
        
         ### log preparation ###
         # log_dir = './log-{}/'.format(args.random)
@@ -378,7 +401,7 @@ def run_sweep(config=None):
 
 def main():
     args = get_args()
-    wandb.agent(args.sweep_id, run_sweep, count=5)
+    wandb.agent(args.sweep_id, run_sweep)
 
 if __name__ == '__main__':
     main()
