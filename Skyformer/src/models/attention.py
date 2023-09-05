@@ -14,6 +14,8 @@ def attn_selector(attn_type, config, W_q=None, W_k=None, W_v=None):
 
     elif attn_type.startswith("mlp"):
         attn = MLPAttention(config)
+    elif attn_type.startswith("conv"):
+        attn = ConvAttention(config)
 
     elif attn_type.startswith("kernelized"):
         attn = SoftmaxAttention_RBF(config)
