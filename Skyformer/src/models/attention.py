@@ -101,6 +101,58 @@ class SoftmaxAttention(nn.Module):
 
 
 
+class ConvAttention(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.drop_attn = torch.nn.Dropout(p = config["attention_dropout"])
+        self.head_dim = config["head_dim"]
+        self.dim = config["transformer_dim"] # input_dim
+        self.num_head = config["num_head"]
+        self.attn_type = config["attn_type"]
+        self.seq_len = config["max_seq_len"]
+        # self.hidden_size = self.seq_len
+        self.hidden_size = config["hidden_size"]
+
+        self.W_x = nn.Linear(self.dim, self.num_head * self.head_dim)
+        self.W_v = nn.Linear(self.dim, self.num_head * self.head_dim)
+
+        # Modify self.nnet to include convolutional layers
+        self.nnet = nn.Sequential(
+            nn.Conv1d(self.head_dim, self.hidden_size, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv1d(self.hidden_size, self.seq_len, kernel_size=3, padding=1),
+        )
+
+    def forward(self, X, mask):
+
+        # input [batch_size, seq_len, dim]
+
+
+        
+        V = self.split_heads(self.W_v(X)) # [batch_size, nb_heads, seq_len, dim_head]
+
+
+
+        X = self.split_heads(self.W_x(X))  # [batch_size, nb_heads, seq_len, dim_head]
+
+
+
+        wei = self.nnet(X)  # [batch_size, nb_heads, seq_len, seq_len]
+
+        wei = wei - 1e6 * (1 - mask[:, None, None, :])
+
+        wei = nn.functional.softmax(wei, dim = -1)
+        wei = self.drop_attn(wei)
+
+
+        attn_out = torch.matmul(wei, V) # [batch_size, nb_heads, seq_len, seq_len] * [batch_size, nb_heads, seq_len, dim_head] -> [batch_size, nb_heads, seq_len, dim_head] 
+
+        attn_out = self.combine_heads(attn_out)
+
+        # output [batch_size, seq_len, dim]
+        return attn_out
+        
+
 class MLPAttention(nn.Module):
     def __init__(self, config):
         super().__init__()
