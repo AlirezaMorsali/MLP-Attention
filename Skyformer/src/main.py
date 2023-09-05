@@ -262,8 +262,8 @@ def run_sweep(config=None):
             model_config["attn_type"] = 'softmax'
             print('attn: softmax')
         elif sweep_config.hidden_size == 1 or sweep_config.hidden_size == '1':
-            model_config["attn_type"] = 'linformer'
-            print('attn: linformer')
+            model_config["attn_type"] = 'conv'
+            print('attn: conv')
         elif sweep_config.hidden_size == 2 or sweep_config.hidden_size == '2':
             model_config["attn_type"] = 'informer'
             print('attn: informer')
