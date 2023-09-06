@@ -103,6 +103,7 @@ class SoftmaxAttention(nn.Module):
 
 
 
+
 class ConvAttention(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -114,8 +115,6 @@ class ConvAttention(nn.Module):
         self.seq_len = config["max_seq_len"]
         # self.hidden_size = self.seq_len
         self.hidden_size = config["hidden_size"]
-
-        self.kernel_size = config["kernel_size"]
 
         self.W_x = nn.Linear(self.dim, self.num_head * self.head_dim)
         self.W_v = nn.Linear(self.dim, self.num_head * self.head_dim)
@@ -132,16 +131,11 @@ class ConvAttention(nn.Module):
 
         # input [batch_size, seq_len, dim]
 
-
-        V = self.W_v(X) # [batch_size, seq_len, num_head * head_dim]
-
+        V = self.split_heads(self.W_v(X)) # [batch_size, seq_len, num_head * head_dim]
 
         X = self.W_x(X)  # [batch_size, seq_len, num_head * head_dim]
 
-
         X = X.permute(0, 2, 1) # [batch_size, num_head * head_dim, seq_len]
-
-
 
         wei = self.nnet(X)  # [batch_size, nb_heads*seq_len, seq_len]
 
@@ -152,21 +146,31 @@ class ConvAttention(nn.Module):
         nb_heads = product_dim // seq_len
 
         # Reshape the input tensor
-        output_tensor = wei.view(batch_size, nb_heads, seq_len, seq_len)
+        wei = wei.view(batch_size, nb_heads, seq_len, seq_len)
         
-
+        
         wei = wei - 1e6 * (1 - mask[:, None, None, :])
 
         wei = nn.functional.softmax(wei, dim = -1)
         wei = self.drop_attn(wei)
 
-
+      
         attn_out = torch.matmul(wei, V) # [batch_size, nb_heads, seq_len, seq_len] * [batch_size, nb_heads, seq_len, dim_head] -> [batch_size, nb_heads, seq_len, dim_head] 
 
         attn_out = self.combine_heads(attn_out)
- 
+
         # output [batch_size, seq_len, dim]
         return attn_out
+
+    def combine_heads(self, X):
+        X = X.transpose(1, 2)
+        X = X.reshape(X.size(0), X.size(1), self.num_head * self.head_dim)
+        return X
+
+    def split_heads(self, X):
+        X = X.reshape(X.size(0), X.size(1), self.num_head, self.head_dim)
+        X = X.transpose(1, 2)
+        return X
     
 
     
