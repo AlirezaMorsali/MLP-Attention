@@ -274,6 +274,9 @@ def run_sweep(config=None):
             model_config["attn_type"] = args.attn
             print('attn: ', args.attn)
 
+
+        model_config["kernel_size"] = sweep_config.kernel_size
+
         model_config["hidden_size"] = sweep_config.hidden_size
         
         
