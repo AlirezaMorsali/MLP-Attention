@@ -222,6 +222,7 @@ def get_args():
     parser.add_argument('--random', type=int, default=42)
     parser.add_argument('--full_training', type=bool, default=False)
     parser.add_argument('--sweep_id', type=str)
+    parser.add_argument('--batch_size', type=int, default=32)
     args = parser.parse_args()
     return args
 
@@ -281,6 +282,9 @@ def run_sweep(config=None):
         
         
         training_config = Config[args.task]["training"]
+
+        if args.batch_size:
+            training_config['batch_size'] = args.batch_size
         
         if not args.full_training:
             print('-----------full training------', ' False')
