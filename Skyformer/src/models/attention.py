@@ -124,7 +124,7 @@ class ConvAttention(nn.Module):
         # nn.ReLU(),
         # nn.Linear(hidden_size, hidden_size),
         nn.ReLU(),
-        nn.Conv1d(self.hidden_size, self.num_head*self.seq_len, kernel_size=self.kernel_size, groups=self.num_head, padding='same', padding='same'),
+        nn.Conv1d(self.hidden_size, self.num_head*self.seq_len, kernel_size=self.kernel_size, groups=self.num_head, padding='same'),
         )
 
 
