@@ -115,7 +115,8 @@ class ConvAttention(nn.Module):
         self.seq_len = config["max_seq_len"]
         # self.hidden_size = self.seq_len
         self.hidden_size = config["hidden_size"]
-
+        self.kernel_size = config["kernel_size"]
+        
         self.W_x = nn.Linear(self.dim, self.num_head * self.head_dim)
         self.W_v = nn.Linear(self.dim, self.num_head * self.head_dim)
         self.nnet = nn.Sequential(
