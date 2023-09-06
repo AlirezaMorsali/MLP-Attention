@@ -103,7 +103,7 @@ class SoftmaxAttention(nn.Module):
 
 
 
-class MLPAttention(nn.Module):
+class ConvAttention(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.drop_attn = torch.nn.Dropout(p = config["attention_dropout"])
