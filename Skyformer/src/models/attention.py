@@ -174,16 +174,6 @@ class ConvAttention(nn.Module):
         return X
     
 
-    
-    def combine_heads(self, X):
-        X = X.transpose(1, 2)
-        X = X.reshape(X.size(0), X.size(1), self.num_head * self.head_dim)
-        return X
-
-    def split_heads(self, X):
-        X = X.reshape(X.size(0), X.size(1), self.num_head, self.head_dim)
-        X = X.transpose(1, 2)
-        return X
 
 
 class MLPAttention(nn.Module):
