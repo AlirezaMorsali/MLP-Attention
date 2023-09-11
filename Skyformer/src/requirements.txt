@@ -1,0 +1,15 @@
+torch
+transformers
+performer-pytorch
+tensorboard
+axial_positional_embedding
+local-attention
+fsspec
+wrapt
+opt_einsum
+gast
+astunparse
+psutil
+einops
+torch-dct
+wandb
