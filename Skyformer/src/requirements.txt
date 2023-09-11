@@ -11,3 +11,4 @@ gast
 astunparse
 psutil
 einops
+torch-dct
