@@ -44,6 +44,7 @@ listops = {
                   "kernelized":{"bz_rate":1},
                   "mlp":{"bz_rate":1,},
                   "conv":{"bz_rate":1,},
+                  "dct":{"bz_rate":1},
                   "sketchedRBF32128":{"bz_rate":1, "nb_features":128, "sketched_kernel":"kernel_RS_RBF", "accumulation":1, "sampling_factor":4, "no_projection":False},
                   "skyformer":{"bz_rate":1, "nb_features":128, "sketched_kernel":"kernel_RS_RBF", "accumulation":1, "sampling_factor":4, "no_projection":False},
 
