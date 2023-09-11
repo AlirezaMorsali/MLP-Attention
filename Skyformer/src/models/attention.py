@@ -14,6 +14,10 @@ def attn_selector(attn_type, config, W_q=None, W_k=None, W_v=None):
 
     elif attn_type.startswith("mlp"):
         attn = MLPAttention(config)
+        
+    elif attn_type.startwith("dct"):
+        attn = DCTAttention(config)
+        
     elif attn_type.startswith("conv"):
         attn = ConvAttention(config)
 
@@ -101,7 +105,17 @@ class SoftmaxAttention(nn.Module):
         # output [batch_size, nb_heads, seq_len, dim_head]
         return X
 
+class DCTAttention(nn.Module):
+    def __init__(self, config):
+        super().__init__()
 
+    def forward(self, X, mask=None):
+
+        y = dct.dct(X)
+        attn_out = dct.dct(y, 1)
+        # output [batch_size, seq_len, dim]
+
+        return attn_out
 
 
 class ConvAttention(nn.Module):
@@ -264,7 +278,7 @@ class Attention(nn.Module):
 
     def forward(self, X, mask):
 
-        if self.attn_type.startswith("longformer") or self.attn_type.startswith("reformer") or self.attn_type.startswith("mlp") or self.attn_type.startswith("conv"):
+        if self.attn_type.startswith("longformer") or self.attn_type.startswith("reformer") or self.attn_type.startswith("mlp") or self.attn_type.startswith("conv") or self.attn_type.startswith("dct"):
             with torch.cuda.amp.autocast(enabled = False):
                 attn_out = self.attn(X.float(), mask.float())
 
