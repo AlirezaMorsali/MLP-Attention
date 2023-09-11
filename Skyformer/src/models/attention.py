@@ -16,7 +16,7 @@ def attn_selector(attn_type, config, W_q=None, W_k=None, W_v=None):
     elif attn_type.startswith("mlp"):
         attn = MLPAttention(config)
         
-    elif attn_type.startwith("dct"):
+    elif attn_type.startswith("dct"):
         attn = DCTAttention(config)
         
     elif attn_type.startswith("conv"):
