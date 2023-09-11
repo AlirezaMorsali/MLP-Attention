@@ -12,3 +12,4 @@ astunparse
 psutil
 einops
 torch-dct
+wandb
