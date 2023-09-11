@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import math
 import json
+import torch_dct as dct
 from torch.utils.checkpoint import checkpoint
 
 
