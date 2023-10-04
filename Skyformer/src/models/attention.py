@@ -206,7 +206,7 @@ class MLPConCat(nn.Module):
         self.W_v = nn.Linear(self.dim, self.num_head*self.head_dim)
         
         self.attention_net = nn.Sequential(
-            nn.Linear(self.dim, self.head_dim),
+            nn.Linear(self.seq_len*self.dim, self.head_dim),
             nn.ReLU(),
             nn.Linear(self.head_dim, self.seq_len*self.seq_len)
         )
