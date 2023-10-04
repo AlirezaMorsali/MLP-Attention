@@ -216,7 +216,7 @@ class MLPConCat(nn.Module):
         X = self.split_heads(self.W_x(X)) 
         P0 = X.reshape(-1, self.num_head, self.seq_len * self.head_dim)
         att_scores = self.attention_net(P0)
-        att_scores = att_scores.view(seq_len, seq_len)
+        att_scores = att_scores.view(self.seq_len, self.seq_len)
         # wei = wei - 1e6 * (1 - mask[:, None, None, :]) NOT IMPLEMENTED
         att_weights = torch.softmax(att_scores, dim=-1)
         att_weights = self.drop_attn(att_weights)
