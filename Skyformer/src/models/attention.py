@@ -190,7 +190,7 @@ class ConvAttention(nn.Module):
         X = X.reshape(X.size(0), X.size(1), self.num_head, self.head_dim)
         X = X.transpose(1, 2)
         return X
-    
+
 class MLPConCat(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -199,26 +199,70 @@ class MLPConCat(nn.Module):
         self.attn_type = config["attn_type"]
         self.seq_len = config["max_seq_len"]
         self.hidden_size = config["hidden_size"]
+        self.num_head = config["num_head"]
+        self.head_dim = config["head_dim"]
         
-        self.linear_V = nn.Linear(self.dim, self.hidden_size)
+        self.W_x = nn.Linear(self.dim, self.num_head*self.head_dim)
+        self.W_v = nn.Linear(self.dim, self.num_head*self.head_dim)
+        
         self.attention_net = nn.Sequential(
-            nn.Linear(seq_len*input_dim, hidden_dim),
+            nn.Linear(self.seq_len*self.dim, self.head_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim, seq_len*seq_len)
+            nn.Linear(self.head_dim, self.seq_len*self.seq_len)
         )
 
     def forward(self, X, mask):
-        X = X.view(self.seq_len, self.dim)
-        V = self.linear_V(X)
-        P0 = X.view(-1, seq_len * dim)
+        V = self.split_heads(self.W_v(X)) 
+        X = self.split_heads(self.W_x(X)) 
+        P0 = X.view(-1, self.num_head, self.seq_len * self.head_dim)
         att_scores = self.attention_net(P0)
         att_scores = att_scores.view(seq_len, seq_len)
         # wei = wei - 1e6 * (1 - mask[:, None, None, :]) NOT IMPLEMENTED
         att_weights = torch.softmax(att_scores, dim=-1)
         att_weights = self.drop_attn(att_weights)
         weighted_sum = torch.matmul(att_weights, V)
-
+        weighted_sum = self.combine_heads(weighted_sum)
         return weighted_sum
+
+    def combine_heads(self, X):
+        X = X.transpose(1, 2)
+        X = X.reshape(X.size(0), X.size(1), self.num_head * self.head_dim)
+        return X
+
+    def split_heads(self, X):
+        X = X.reshape(X.size(0), X.size(1), self.num_head, self.head_dim)
+        X = X.transpose(1, 2)
+        return X
+
+#one head one batch
+# class MLPConCat(nn.Module):
+#     def __init__(self, config):
+#         super().__init__()
+#         self.drop_attn = torch.nn.Dropout(p = config["attention_dropout"])
+#         self.dim = config["transformer_dim"] # input_dim
+#         self.attn_type = config["attn_type"]
+#         self.seq_len = config["max_seq_len"]
+#         self.hidden_size = config["hidden_size"]
+        
+#         self.linear_V = nn.Linear(self.dim, self.hidden_size)
+#         self.attention_net = nn.Sequential(
+#             nn.Linear(seq_len*input_dim, hidden_dim),
+#             nn.ReLU(),
+#             nn.Linear(hidden_dim, seq_len*seq_len)
+#         )
+
+#     def forward(self, X, mask):
+#         X = X.view(self.seq_len, self.dim)
+#         V = self.linear_V(X)
+#         P0 = X.view(-1, seq_len * dim)
+#         att_scores = self.attention_net(P0)
+#         att_scores = att_scores.view(seq_len, seq_len)
+#         # wei = wei - 1e6 * (1 - mask[:, None, None, :]) NOT IMPLEMENTED
+#         att_weights = torch.softmax(att_scores, dim=-1)
+#         att_weights = self.drop_attn(att_weights)
+#         weighted_sum = torch.matmul(att_weights, V)
+
+#         return weighted_sum
 
 class MLPAttention(nn.Module):
     def __init__(self, config):
