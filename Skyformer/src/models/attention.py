@@ -214,7 +214,7 @@ class MLPConCat(nn.Module):
     def forward(self, X, mask):
         V = self.split_heads(self.W_v(X)) 
         X = self.split_heads(self.W_x(X)) 
-        P0 = X.view(-1, self.num_head, self.seq_len * self.head_dim)
+        P0 = X.reshape(-1, self.num_head, self.seq_len * self.head_dim)
         att_scores = self.attention_net(P0)
         att_scores = att_scores.view(seq_len, seq_len)
         # wei = wei - 1e6 * (1 - mask[:, None, None, :]) NOT IMPLEMENTED
