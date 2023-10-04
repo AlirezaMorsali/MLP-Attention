@@ -15,6 +15,9 @@ def attn_selector(attn_type, config, W_q=None, W_k=None, W_v=None):
 
     elif attn_type.startswith("mlp"):
         attn = MLPAttention(config)
+
+    elif attn_type.startswith("mlpconcat"):
+        attn = MLPConCat(config)
         
     elif attn_type.startswith("dct"):
         attn = DCTAttention(config)
@@ -305,7 +308,7 @@ class Attention(nn.Module):
 
     def forward(self, X, mask):
 
-        if self.attn_type.startswith("longformer") or self.attn_type.startswith("reformer") or self.attn_type.startswith("mlp") or self.attn_type.startswith("conv") or self.attn_type.startswith("dct"):
+        if self.attn_type.startswith("longformer") or self.attn_type.startswith("reformer") or self.attn_type.startswith("mlp") or self.attn_type.startswith("conv") or self.attn_type.startswith("dct") or self.attn_type.startswit("mlpconcat"):
             with torch.cuda.amp.autocast(enabled = False):
                 attn_out = self.attn(X.float(), mask.float())
 
