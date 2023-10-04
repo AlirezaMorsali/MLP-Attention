@@ -244,7 +244,7 @@ class MLPConCat(nn.Module):
         self.seq_len = config["max_seq_len"]
         self.hidden_size = config["hidden_size"]
         
-        self.linear_V = nn.Linear(self.dim, self.hidden_size)
+        self.linear_V = nn.Linear(self.dim, self.dim)
         self.attention_net = nn.Sequential(
             nn.Linear(self.seq_len*self.dim, self.hidden_size),
             nn.ReLU(),
@@ -366,8 +366,11 @@ class Attention(nn.Module):
                 else:
                     attn_out = self.attn(Q.float(), K.float(), V.float(), mask.float())
             attn_out = self.combine_heads(attn_out)
-
-        out = self.ff(attn_out)
+            
+        if not self.attn_type.startswith("concat"):
+            out = self.ff(attn_out)
+        else:
+            out = attn_out
 
         return out
 
