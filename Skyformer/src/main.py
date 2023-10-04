@@ -220,7 +220,7 @@ def get_args():
     parser.add_argument("--task", type = str, default="lra-listops",
                         help = "lra-listops, lra-retrieval, lra-text, lra-pathfinder32-curv_contour_length_14")
     parser.add_argument('--random', type=int, default=42)
-    parser.add_argument('--full_training', type=bool, default=False)
+    parser.add_argument('--full_training', action='store_true', default=False)
     parser.add_argument('--sweep_id', type=str)
     parser.add_argument('--batch_size', type=int, default=32)
     args = parser.parse_args()
