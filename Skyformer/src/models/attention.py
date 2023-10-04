@@ -188,8 +188,34 @@ class ConvAttention(nn.Module):
         X = X.transpose(1, 2)
         return X
     
+class MLPConCat(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.drop_attn = torch.nn.Dropout(p = config["attention_dropout"])
+        self.dim = config["transformer_dim"] # input_dim
+        self.attn_type = config["attn_type"]
+        self.seq_len = config["max_seq_len"]
+        self.hidden_size = config["hidden_size"]
+        
+        self.linear_V = nn.Linear(self.dim, self.hidden_size)
+        self.attention_net = nn.Sequential(
+            nn.Linear(seq_len*input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, seq_len*seq_len)
+        )
 
+    def forward(self, X, mask):
+        X = X.view(self.seq_len, self.dim)
+        V = self.linear_V(X)
+        P0 = X.view(-1, seq_len * dim)
+        att_scores = self.attention_net(P0)
+        att_scores = att_scores.view(seq_len, seq_len)
+        # wei = wei - 1e6 * (1 - mask[:, None, None, :]) NOT IMPLEMENTED
+        att_weights = torch.softmax(att_scores, dim=-1)
+        att_weights = self.drop_attn(att_weights)
+        weighted_sum = torch.matmul(att_weights, V)
 
+        return weighted_sum
 
 class MLPAttention(nn.Module):
     def __init__(self, config):
