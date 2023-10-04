@@ -222,6 +222,7 @@ class MLPConCat(nn.Module):
         att_weights = self.drop_attn(att_weights)
         weighted_sum = torch.matmul(att_weights, V)
         weighted_sum = self.combine_heads(weighted_sum)
+        print('-')
         return weighted_sum
 
     def combine_heads(self, X):
