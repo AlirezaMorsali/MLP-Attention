@@ -16,7 +16,7 @@ def attn_selector(attn_type, config, W_q=None, W_k=None, W_v=None):
     elif attn_type.startswith("mlp"):
         attn = MLPAttention(config)
 
-    elif attn_type.startswith("mlpconcat"):
+    elif attn_type.startswith("concat"):
         attn = MLPConCat(config)
         
     elif attn_type.startswith("dct"):
@@ -222,7 +222,6 @@ class MLPConCat(nn.Module):
         att_weights = self.drop_attn(att_weights)
         weighted_sum = torch.matmul(att_weights, V)
         weighted_sum = self.combine_heads(weighted_sum)
-        print('-')
         return weighted_sum
 
     def combine_heads(self, X):
