@@ -214,10 +214,9 @@ class MLPEncode(nn.Module):
     def forward(self, X, mask):
         X = X.view(self.seq_len, self.dim)
         V = self.linear_V(X)
-        print('#################', self.dim)
-        print('*****************', self.seq_len)
+
         
-        P0 = self.positional_encoding(self.dim, self.seq_len)
+        P0 = self.positional_encoding(self.dim, self.seq_len).cuda()
         E = P0*X
         weighted_sum_tensor = torch.zeros(self.seq_len, self.dim)
 
@@ -225,7 +224,7 @@ class MLPEncode(nn.Module):
         for i in range(seq_len):
             # Weight all rows except the current row equally
             weighted_rows = torch.cat((X[:i], X[i+1:]), dim=0)
-            uniform_weights = torch.ones(weighted_rows.shape[0])
+            uniform_weights = torch.ones(weighted_rows.shape[0]).cuda()
             weighted_sum = torch.sum(weighted_rows * uniform_weights.view(-1, 1), dim=0)
             weighted_sum_tensor[i] = weighted_sum/(X.shape[0]-1)
 
@@ -242,9 +241,9 @@ class MLPEncode(nn.Module):
         return weighted_sum
 
     def positional_encoding(self, d_model, max_sequence_length):
-      even_i = torch.arange(0, d_model, 2).float()
+      even_i = torch.arange(0, d_model, 2).float().cuda()
       denominator = torch.pow(10000, even_i / d_model)
-      position = torch.arange(max_sequence_length).reshape(max_sequence_length, 1)
+      position = torch.arange(max_sequence_length).reshape(max_sequence_length, 1).cuda()
       even_PE = torch.sin(position / denominator)
       odd_PE = torch.cos(position / denominator)
       stacked = torch.stack([even_PE, odd_PE], dim=2)
