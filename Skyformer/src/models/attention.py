@@ -18,6 +18,9 @@ def attn_selector(attn_type, config, W_q=None, W_k=None, W_v=None):
 
     elif attn_type.startswith("concat"):
         attn = MLPConCat(config)
+
+    elif attn_type.startswith("concat"):
+        attn = MLPEncode(config)
         
     elif attn_type.startswith("dct"):
         attn = DCTAttention(config)
@@ -191,6 +194,61 @@ class ConvAttention(nn.Module):
         X = X.transpose(1, 2)
         return X
 
+#one head one batch
+class MLPEncode(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.drop_attn = torch.nn.Dropout(p = config["attention_dropout"])
+        self.dim = config["transformer_dim"] # input_dim
+        self.attn_type = config["attn_type"]
+        self.seq_len = config["max_seq_len"]
+        self.hidden_size = config["hidden_size"]
+        
+        self.linear_V = nn.Linear(self.dim, self.dim)
+        self.attention_net = nn.Sequential(
+            nn.Linear(2*self.dim, self.hidden_size),
+            nn.ReLU(),
+            nn.Linear(self.hidden_size, self.seq_len)
+        )
+
+    def forward(self, X, mask):
+        X = X.view(self.seq_len, self.dim)
+        V = self.linear_V(X)
+        
+        P0 = positional_encoding(self.dim, self.seq_len)
+        E = P0*X
+        weighted_sum_tensor = torch.zeros(self.seq_len, self.dim)
+
+        # Calculate the weighted sum for each row
+        for i in range(seq_len):
+            # Weight all rows except the current row equally
+            weighted_rows = torch.cat((X[:i], X[i+1:]), dim=0)
+            uniform_weights = torch.ones(weighted_rows.shape[0])
+            weighted_sum = torch.sum(weighted_rows * uniform_weights.view(-1, 1), dim=0)
+            weighted_sum_tensor[i] = weighted_sum/(X.shape[0]-1)
+
+        # Concatenate the X and weighted_sum_tensor along dim=1
+        result_tensor = torch.cat((X, weighted_sum_tensor), dim=1)
+
+        att_scores = self.attention_net(result_tensor)
+        # att_scores = att_scores.view(self.seq_len, self.seq_len)
+        # wei = wei - 1e6 * (1 - mask[:, None, None, :]) NOT IMPLEMENTED
+        att_weights = torch.softmax(att_scores, dim=-1)
+        att_weights = self.drop_attn(att_weights)
+        weighted_sum = torch.matmul(att_weights, V)
+
+        return weighted_sum
+
+    def positional_encoding(d_model, max_sequence_length):
+      even_i = torch.arange(0, d_model, 2).float()
+      denominator = torch.pow(10000, even_i / d_model)
+      position = torch.arange(max_sequence_length).reshape(max_sequence_length, 1)
+      even_PE = torch.sin(position / denominator)
+      odd_PE = torch.cos(position / denominator)
+      stacked = torch.stack([even_PE, odd_PE], dim=2)
+      PE = torch.flatten(stacked, start_dim=1, end_dim=2)
+      return PE
+
 class MLPConCat(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -232,7 +290,9 @@ class MLPConCat(nn.Module):
     def split_heads(self, X):
         X = X.reshape(X.size(0), X.size(1), self.num_head, self.head_dim)
         X = X.transpose(1, 2)
-        return X
+        return 
+
+
 
 # #one head one batch
 # class MLPConCat(nn.Module):
@@ -352,7 +412,7 @@ class Attention(nn.Module):
 
     def forward(self, X, mask):
 
-        if self.attn_type.startswith("longformer") or self.attn_type.startswith("reformer") or self.attn_type.startswith("mlp") or self.attn_type.startswith("conv") or self.attn_type.startswith("dct") or self.attn_type.startswith("concat"):
+        if self.attn_type.startswith("longformer") or self.attn_type.startswith("reformer") or self.attn_type.startswith("mlp") or self.attn_type.startswith("conv") or self.attn_type.startswith("dct") or self.attn_type.startswith("concat") or self.attn_type.startswith("encode"):
             with torch.cuda.amp.autocast(enabled = False):
                 attn_out = self.attn(X.float(), mask.float())
 
