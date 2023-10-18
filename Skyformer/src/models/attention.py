@@ -428,10 +428,10 @@ class Attention(nn.Module):
                     attn_out = self.attn(Q.float(), K.float(), V.float(), mask.float())
             attn_out = self.combine_heads(attn_out)
             
-        # if not self.attn_type.startswith("concat"):
-        out = self.ff(attn_out)
-        # else:
-        #     out = attn_out
+        if not self.attn_type.startswith("encode"):
+            out = self.ff(attn_out)
+        else:
+            out = attn_out
 
         return out
 
