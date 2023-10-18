@@ -19,7 +19,7 @@ def attn_selector(attn_type, config, W_q=None, W_k=None, W_v=None):
     elif attn_type.startswith("concat"):
         attn = MLPConCat(config)
 
-    elif attn_type.startswith("concat"):
+    elif attn_type.startswith("encode"):
         attn = MLPEncode(config)
         
     elif attn_type.startswith("dct"):
