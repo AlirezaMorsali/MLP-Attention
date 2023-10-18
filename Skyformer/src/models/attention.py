@@ -215,7 +215,7 @@ class MLPEncode(nn.Module):
         X = X.view(self.seq_len, self.dim)
         V = self.linear_V(X)
         
-        P0 = positional_encoding(self.dim, self.seq_len)
+        P0 = self.positional_encoding(self.dim, self.seq_len)
         E = P0*X
         weighted_sum_tensor = torch.zeros(self.seq_len, self.dim)
 
