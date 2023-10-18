@@ -241,7 +241,7 @@ class MLPEncode(nn.Module):
 
         return weighted_sum
 
-    def positional_encoding(d_model, max_sequence_length):
+    def positional_encoding(self, d_model, max_sequence_length):
       even_i = torch.arange(0, d_model, 2).float()
       denominator = torch.pow(10000, even_i / d_model)
       position = torch.arange(max_sequence_length).reshape(max_sequence_length, 1)
