@@ -226,7 +226,7 @@ class MLPEncode(nn.Module):
             weighted_rows = torch.cat((E[:i], E[i+1:]), dim=0)
             uniform_weights = torch.ones(weighted_rows.shape[0]).cuda()
             weighted_sum = torch.sum(weighted_rows * uniform_weights.view(-1, 1), dim=0)
-            weighted_sum_tensor[i] = weighted_sum/(X.shape[0]-1).cuda()
+            weighted_sum_tensor[i] = weighted_sum/(X.shape[0]-1)
 
         # Concatenate the X and weighted_sum_tensor along dim=1
         result_tensor = torch.cat((X, weighted_sum_tensor), dim=1)
