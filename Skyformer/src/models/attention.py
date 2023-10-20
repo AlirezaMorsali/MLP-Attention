@@ -218,18 +218,24 @@ class MLPEncode(nn.Module):
         
         P0 = self.positional_encoding(self.dim, self.seq_len).cuda()
         E = P0*X
-        weighted_sum_tensor = torch.zeros(self.seq_len, self.dim).cuda()
 
-        # Calculate the weighted sum for each row
-        for i in range(self.seq_len):
-            # Weight all rows except the current row equally
-            weighted_rows = torch.cat((E[:i], E[i+1:]), dim=0)
-            uniform_weights = torch.ones(weighted_rows.shape[0]).cuda()
-            weighted_sum = torch.sum(weighted_rows * uniform_weights.view(-1, 1), dim=0)
-            weighted_sum_tensor[i] = weighted_sum/(X.shape[0]-1)
+        # Create a tensor with uniform weights for all rows (except the current row)
+        uniform_weights = (torch.ones(self.seq_len, 1) - torch.eye(self.seq_len)).cuda()
+        
+        # Calculate the weighted sum using matrix multiplication
+        weighted_sum_tensor = torch.mm(uniform_weights, E)
+        # weighted_sum_tensor = torch.zeros(self.seq_len, self.dim).cuda()
+
+        # # Calculate the weighted sum for each row
+        # for i in range(self.seq_len):
+        #     # Weight all rows except the current row equally
+        #     weighted_rows = torch.cat((E[:i], E[i+1:]), dim=0)
+        #     uniform_weights = torch.ones(weighted_rows.shape[0]).cuda()
+        #     weighted_sum = torch.sum(weighted_rows * uniform_weights.view(-1, 1), dim=0)
+        #     weighted_sum_tensor[i] = weighted_sum/(X.shape[0]-1)
 
         # Concatenate the X and weighted_sum_tensor along dim=1
-        result_tensor = torch.cat((X, weighted_sum_tensor), dim=1)
+        result_tensor = torch.cat((E, weighted_sum_tensor), dim=1)
 
         att_scores = self.attention_net(result_tensor)
         # att_scores = att_scores.view(self.seq_len, self.seq_len)
