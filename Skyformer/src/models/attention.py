@@ -210,7 +210,7 @@ class MLPEncode(nn.Module):
         self.W_v = nn.Linear(self.dim, self.num_head * self.head_dim)
         # self.linear_V = nn.Linear(self.dim, self.dim)
         self.attention_net = nn.Sequential(
-            nn.Linear(2*self.dim, self.hidden_size),
+            nn.Linear(2*self.head_dim, self.hidden_size),
             nn.ReLU(),
             nn.Linear(self.hidden_size, self.seq_len)
         )
@@ -246,8 +246,8 @@ class MLPEncode(nn.Module):
         #     weighted_sum = torch.sum(weighted_rows * uniform_weights.view(-1, 1), dim=0)
         #     weighted_sum_tensor[i] = weighted_sum/(X.shape[0]-1)
 
-        # Concatenate the X and weighted_sum_tensor along dim=1
-        result_tensor = torch.cat((E, weighted_sum_tensor), dim=1)
+        # Concatenate the X and weighted_sum_tensor along dim=3
+        result_tensor = torch.cat((E, weighted_sum_tensor), dim=3)
 
         
 
