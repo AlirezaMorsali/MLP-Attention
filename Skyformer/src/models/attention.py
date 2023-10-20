@@ -235,7 +235,7 @@ class MLPEncode(nn.Module):
         uniform_weights = ((torch.ones(self.seq_len, 1) - torch.eye(self.seq_len))/(X.shape[2]-1)).cuda()
         
         # Calculate the weighted sum using matrix multiplication
-        weighted_sum_tensor = torch.mm(uniform_weights, E)
+        weighted_sum_tensor = torch.matmul(uniform_weights, E)
         # weighted_sum_tensor = torch.zeros(self.seq_len, self.dim).cuda()
 
         # # Calculate the weighted sum for each row
