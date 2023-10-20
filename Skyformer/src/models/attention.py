@@ -227,7 +227,7 @@ class MLPEncode(nn.Module):
         # V = self.linear_V(X)
 
         
-        P0 = self.positional_encoding(self.dim, self.seq_len).cuda()
+        P0 = self.positional_encoding(self.head_dim, self.seq_len).cuda()
         P1 = P0.unsqueeze(0).unsqueeze(1).expand(X.shape[0], self.num_head, self.seq_len, self.head_dim)
         E = P1*X
 
