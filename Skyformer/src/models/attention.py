@@ -203,8 +203,12 @@ class MLPEncode(nn.Module):
         self.attn_type = config["attn_type"]
         self.seq_len = config["max_seq_len"]
         self.hidden_size = config["hidden_size"]
+        self.head_dim = config["head_dim"]
+        self.num_head = config["num_head"]
         
-        self.linear_V = nn.Linear(self.dim, self.dim)
+        self.W_x = nn.Linear(self.dim, self.num_head * self.head_dim)
+        self.W_v = nn.Linear(self.dim, self.num_head * self.head_dim)
+        # self.linear_V = nn.Linear(self.dim, self.dim)
         self.attention_net = nn.Sequential(
             nn.Linear(2*self.dim, self.hidden_size),
             nn.ReLU(),
@@ -212,12 +216,20 @@ class MLPEncode(nn.Module):
         )
 
     def forward(self, X, mask):
-        X = X.view(self.seq_len, self.dim)
-        V = self.linear_V(X)
+        # X = X.view(self.seq_len, self.dim)
+        
+        # input [batch_size, seq_len, dim]
+        
+        V = self.split_heads(self.W_v(X)) # [batch_size, nb_heads, seq_len, dim_head]
+
+        X = self.split_heads(self.W_x(X))  # [batch_size, nb_heads, seq_len, dim_head]
+        
+        # V = self.linear_V(X)
 
         
         P0 = self.positional_encoding(self.dim, self.seq_len).cuda()
-        E = P0*X
+        P1 = P0.unsqueeze(0).unsqueeze(1).expand(X.shape[0], self.num_head, self.seq_len, self.head_dim)
+        E = P1*X
 
         # Create a tensor with uniform weights for all rows (except the current row)
         uniform_weights = (torch.ones(self.seq_len, 1) - torch.eye(self.seq_len)).cuda()
@@ -237,6 +249,8 @@ class MLPEncode(nn.Module):
         # Concatenate the X and weighted_sum_tensor along dim=1
         result_tensor = torch.cat((E, weighted_sum_tensor), dim=1)
 
+        
+
         att_scores = self.attention_net(result_tensor)
         # att_scores = att_scores.view(self.seq_len, self.seq_len)
         # wei = wei - 1e6 * (1 - mask[:, None, None, :]) NOT IMPLEMENTED
@@ -244,7 +258,20 @@ class MLPEncode(nn.Module):
         att_weights = self.drop_attn(att_weights)
         weighted_sum = torch.matmul(att_weights, V)
 
-        return weighted_sum
+        attn_out = self.combine_heads(weighted_sum)
+
+        return attn_out
+
+
+    def combine_heads(self, X):
+        X = X.transpose(1, 2)
+        X = X.reshape(X.size(0), X.size(1), self.num_head * self.head_dim)
+        return X
+
+    def split_heads(self, X):
+        X = X.reshape(X.size(0), X.size(1), self.num_head, self.head_dim)
+        X = X.transpose(1, 2)
+        return X
 
     def positional_encoding(self, d_model, max_sequence_length):
       even_i = torch.arange(0, d_model, 2).float().cuda()
@@ -357,12 +384,8 @@ class MLPAttention(nn.Module):
     def forward(self, X, mask):
 
         # input [batch_size, seq_len, dim]
-
-
         
         V = self.split_heads(self.W_v(X)) # [batch_size, nb_heads, seq_len, dim_head]
-
-
 
         X = self.split_heads(self.W_x(X))  # [batch_size, nb_heads, seq_len, dim_head]
 
@@ -434,10 +457,10 @@ class Attention(nn.Module):
                     attn_out = self.attn(Q.float(), K.float(), V.float(), mask.float())
             attn_out = self.combine_heads(attn_out)
             
-        if not self.attn_type.startswith("encode"):
-            out = self.ff(attn_out)
-        else:
-            out = attn_out
+        # if not self.attn_type.startswith("encode"):
+        out = self.ff(attn_out)
+        # else:
+        #     out = attn_out
 
         return out
 
