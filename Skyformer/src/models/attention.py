@@ -413,6 +413,95 @@ class MLPAttention(nn.Module):
         X = X.reshape(X.size(0), X.size(1), self.num_head * self.head_dim)
         return X
 
+
+
+    class GaussianMLPAttention(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.drop_attn = torch.nn.Dropout(p = config["attention_dropout"])
+        self.head_dim = config["head_dim"]
+        self.dim = config["transformer_dim"] # input_dim
+        self.num_head = config["num_head"]
+        self.attn_type = config["attn_type"]
+        self.seq_len = config["max_seq_len"]
+        # self.hidden_size = self.seq_len
+        self.hidden_size = config["hidden_size"]
+
+        self.W_x = nn.Linear(self.dim, self.num_head * self.head_dim)
+        self.W_v = nn.Linear(self.dim, self.num_head * self.head_dim)
+        self.nnet = nn.Sequential(
+        nn.Linear(self.head_dim, self.hidden_size),
+        # nn.ReLU(),
+        # nn.Linear(hidden_size, hidden_size),
+        nn.ReLU(),
+        nn.Linear(self.hidden_size, self.seq_len, bias=False),
+        )
+
+    def gaussian_kernel(self, t, variance=1.0):
+        # Calculate weights based on Gaussian kernel
+        weights = torch.exp(-0.5 * ((t - mu) ** 2) / variance)
+        return weights
+
+
+    def apply_gaussian_kernel(self, X, gaussian_weights):
+    # Apply Gaussian kernel to each dimension of X
+    batch_size, num_heads, seq_len, dim_head = X.size()
+
+    time_steps = torch.arange(self.seq_len, dtype=torch.float32)
+    gaussian_weights = self.gaussian_kernel(time_steps)
+
+    # Reshape Gaussian weights for broadcasting
+    gaussian_weights = gaussian_weights.view(1, 1, seq_len, 1)
+
+    # Apply Gaussian weights to each dimension separately
+    X_weighted = X * gaussian_weights
+
+    # Sum along the sequence dimension to create the new token
+    new_token = X_weighted.sum(dim=2)
+
+    return new_token
+
+    def forward(self, X, mask):
+
+        # input [batch_size, seq_len, dim]
+        
+        V = self.split_heads(self.W_v(X)) # [batch_size, nb_heads, seq_len, dim_head]
+
+        X = self.split_heads(self.W_x(X))  # [batch_size, nb_heads, seq_len, dim_head]
+
+        # # Gaussian kernel
+        # time_steps = torch.arange(self.seq_len, dtype=torch.float32)
+        # gaussian_weights = self.gaussian_kernel(time_steps)
+
+        # gaussian kernel 
+        # instead of input X to nnet, in each time step, multiply the tokens with a gaussian kernel with a mean at 
+        # the current gaussian kernel and fixed variance. for example in step t we have a gausssian kernel that's is mean
+        # is on this current step and it is weaker as we go further from current token, build a new tensor that each new token of it 
+        # in each time step is the multipliacation of other tokens with this gaussian kernel and add all of them together for this time step, for 
+        # other time step similar gaussian kernel that just the mean of it shift
+        
+        wei = self.nnet(X)  # [batch_size, nb_heads, seq_len, seq_len]
+
+        wei = wei - 1e6 * (1 - mask[:, None, None, :])
+
+        wei = nn.functional.softmax(wei, dim = -1)
+        wei = self.drop_attn(wei)
+
+
+        attn_out = torch.matmul(wei, V) # [batch_size, nb_heads, seq_len, seq_len] * [batch_size, nb_heads, seq_len, dim_head] -> [batch_size, nb_heads, seq_len, dim_head] 
+
+        attn_out = self.combine_heads(attn_out)
+ 
+        # output [batch_size, seq_len, dim]
+        return attn_out
+    
+
+    
+    def combine_heads(self, X):
+        X = X.transpose(1, 2)
+        X = X.reshape(X.size(0), X.size(1), self.num_head * self.head_dim)
+        return X
+
     def split_heads(self, X):
         X = X.reshape(X.size(0), X.size(1), self.num_head, self.head_dim)
         X = X.transpose(1, 2)
