@@ -4,6 +4,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+
 from model import GPTLanguageModel
 from utils import device, estimate_loss, get_batch, load_data
 
@@ -28,7 +29,7 @@ if __name__ == "__main__":
     hidden_size = block_size
 
     # Load data
-    text, chars, vocab_size, stoi, itos, data = load_data("input.txt")
+    text, chars, vocab_size, stoi, itos, data = load_data("src/data/input.txt")
     n = int(0.9 * len(data))
     train_data = data[:n]
     val_data = data[n:]

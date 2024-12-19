@@ -5,7 +5,7 @@ import torch
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-def load_data(file_path="input.txt"):
+def load_data(file_path="src/data/input.txt"):
     with open(file_path, "r", encoding="utf-8") as f:
         text = f.read()
     chars = sorted(list(set(text)))
